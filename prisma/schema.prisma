@@ -1,0 +1,429 @@
+// MediCita · modelo de datos (BACKEND.md §5)
+// - Toda tabla de negocio lleva clinica_id (multi-clínica).
+// - Fechas en UTC (timestamptz); cada clínica tiene su zona horaria.
+// - Los ids son ULID con prefijo (pac_, cit_, per_…) generados en la extensión de Prisma
+//   (src/prisma/extensiones.ts). `@default(cuid())` solo hace el id opcional en los tipos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  PACIENTE
+  RECEPCION
+  ENFERMERA
+  MEDICO
+  ADMIN
+}
+
+enum EstadoCita {
+  PROGRAMADA
+  CONFIRMADA
+  EN_ESPERA
+  LISTA
+  EN_CONSULTA
+  ATENDIDA
+  CANCELADA
+  NO_ASISTIO
+}
+
+enum CanalOrigen {
+  RECEPCION
+  TELEFONO
+  PORTAL_WEB
+  APP_MOVIL
+}
+
+enum Turno {
+  MANANA
+  TARDE
+}
+
+enum EstadoTarea {
+  PENDIENTE
+  HECHA
+  CANCELADA
+}
+
+enum CanalRecordatorio {
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum EstadoRecordatorio {
+  PROGRAMADO
+  ENVIADO
+  FALLIDO
+  CANCELADO
+  OMITIDO
+}
+
+enum Plataforma {
+  ANDROID
+  IOS
+}
+
+model Clinica {
+  id          String   @id @default(cuid())
+  nombre      String
+  direccion   String?
+  telefono    String?
+  zonaHoraria String   @map("zona_horaria")
+  pais        String   @db.Char(2)
+  creadaEn    DateTime @default(now()) @map("creada_en") @db.Timestamptz(3)
+
+  usuarios       Usuario[]
+  personal       Personal[]
+  especialidades Especialidad[]
+  consultorios   Consultorio[]
+  pacientes      Paciente[]
+  citas          Cita[]
+  asignaciones   AsignacionTurno[]
+
+  @@map("clinica")
+}
+
+model Usuario {
+  id               String    @id @default(cuid())
+  clinicaId        String    @map("clinica_id")
+  email            String    @unique
+  passwordHash     String?   @map("password_hash")
+  rol              Rol
+  activo           Boolean   @default(true)
+  intentosFallidos Int       @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime? @map("bloqueado_hasta") @db.Timestamptz(3)
+  ultimoAcceso     DateTime? @map("ultimo_acceso") @db.Timestamptz(3)
+  creadoEn         DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica                Clinica                 @relation(fields: [clinicaId], references: [id])
+  personal               Personal?
+  paciente               Paciente?
+  dispositivos           DispositivoPush[]
+  tokensRefresco         TokenRefresco[]
+  tokensRestablecimiento TokenRestablecimiento[]
+
+  @@index([clinicaId])
+  @@map("usuario")
+}
+
+model TokenRefresco {
+  id         String    @id @default(cuid())
+  usuarioId  String    @map("usuario_id")
+  hash       String    @unique
+  expiraEn   DateTime  @map("expira_en") @db.Timestamptz(3)
+  revocadoEn DateTime? @map("revocado_en") @db.Timestamptz(3)
+  creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("token_refresco")
+}
+
+model TokenRestablecimiento {
+  id        String    @id @default(cuid())
+  usuarioId String    @map("usuario_id")
+  hash      String    @unique
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(3)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("token_restablecimiento")
+}
+
+model Especialidad {
+  id              String @id @default(cuid())
+  clinicaId       String @map("clinica_id")
+  nombre          String
+  duracionCitaMin Int    @default(30) @map("duracion_cita_min")
+
+  clinica      Clinica       @relation(fields: [clinicaId], references: [id])
+  personal     Personal[]
+  consultorios Consultorio[]
+
+  @@unique([clinicaId, nombre])
+  @@map("especialidad")
+}
+
+model Consultorio {
+  id             String  @id @default(cuid())
+  clinicaId      String  @map("clinica_id")
+  nombre         String
+  especialidadId String? @map("especialidad_id")
+  activo         Boolean @default(true)
+
+  clinica      Clinica       @relation(fields: [clinicaId], references: [id])
+  especialidad Especialidad? @relation(fields: [especialidadId], references: [id])
+  personal     Personal[]
+  citas        Cita[]
+
+  @@unique([clinicaId, nombre])
+  @@map("consultorio")
+}
+
+model Personal {
+  id             String  @id @default(cuid())
+  clinicaId      String  @map("clinica_id")
+  usuarioId      String  @unique @map("usuario_id")
+  nombre         String
+  especialidadId String? @map("especialidad_id")
+  licencia       String?
+  consultorioId  String? @map("consultorio_id")
+
+  clinica      Clinica       @relation(fields: [clinicaId], references: [id])
+  usuario      Usuario       @relation(fields: [usuarioId], references: [id])
+  especialidad Especialidad? @relation(fields: [especialidadId], references: [id])
+  consultorio  Consultorio?  @relation(fields: [consultorioId], references: [id])
+
+  horarios            HorarioAtencion[]
+  ausencias           Ausencia[]
+  citasComoMedico     Cita[]            @relation("CitaMedico")
+  turnosComoMedico    AsignacionTurno[] @relation("TurnoMedico")
+  turnosComoEnfermera AsignacionTurno[] @relation("TurnoEnfermera")
+  signosTomados       SignosVitales[]
+  consultas           Consulta[]
+  tareas              TareaDelegada[]
+
+  @@index([clinicaId])
+  @@map("personal")
+}
+
+model HorarioAtencion {
+  id         String @id @default(cuid())
+  clinicaId  String @map("clinica_id")
+  personalId String @map("personal_id")
+  /// ISO: 1 = lunes … 7 = domingo
+  diaSemana  Int    @map("dia_semana") @db.SmallInt
+  /// "HH:mm" en la zona horaria de la clínica
+  horaInicio String @map("hora_inicio") @db.Char(5)
+  horaFin    String @map("hora_fin") @db.Char(5)
+
+  personal Personal @relation(fields: [personalId], references: [id], onDelete: Cascade)
+
+  @@index([clinicaId, personalId])
+  @@map("horario_atencion")
+}
+
+model Ausencia {
+  id         String   @id @default(cuid())
+  clinicaId  String   @map("clinica_id")
+  personalId String   @map("personal_id")
+  desde      DateTime @db.Timestamptz(3)
+  hasta      DateTime @db.Timestamptz(3)
+  motivo     String?
+
+  personal Personal @relation(fields: [personalId], references: [id], onDelete: Cascade)
+
+  @@index([clinicaId, personalId, desde])
+  @@map("ausencia")
+}
+
+model AsignacionTurno {
+  id          String   @id @default(cuid())
+  clinicaId   String   @map("clinica_id")
+  fecha       DateTime @db.Date
+  turno       Turno
+  medicoId    String   @map("medico_id")
+  enfermeraId String   @map("enfermera_id")
+
+  clinica   Clinica  @relation(fields: [clinicaId], references: [id])
+  medico    Personal @relation("TurnoMedico", fields: [medicoId], references: [id])
+  enfermera Personal @relation("TurnoEnfermera", fields: [enfermeraId], references: [id])
+
+  @@unique([clinicaId, fecha, turno, medicoId])
+  @@index([clinicaId, fecha, enfermeraId])
+  @@map("asignacion_turno")
+}
+
+model Paciente {
+  id               String             @id @default(cuid())
+  clinicaId        String             @map("clinica_id")
+  usuarioId        String?            @unique @map("usuario_id")
+  nombres          String
+  apellidos        String
+  documento        String
+  fechaNacimiento  DateTime           @map("fecha_nacimiento") @db.Date
+  telefono         String?
+  email            String?
+  alergias         String?
+  antecedentes     String?
+  seguro           String?
+  canalPreferido   CanalRecordatorio? @map("canal_preferido")
+  consentimientoEn DateTime           @map("consentimiento_en") @db.Timestamptz(3)
+  creadoEn         DateTime           @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  clinica Clinica  @relation(fields: [clinicaId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+  citas   Cita[]
+
+  @@unique([clinicaId, documento])
+  @@map("paciente")
+}
+
+model Cita {
+  id                String      @id @default(cuid())
+  clinicaId         String      @map("clinica_id")
+  pacienteId        String      @map("paciente_id")
+  medicoId          String      @map("medico_id")
+  consultorioId     String      @map("consultorio_id")
+  inicio            DateTime    @db.Timestamptz(3)
+  fin               DateTime    @db.Timestamptz(3)
+  estado            EstadoCita  @default(PROGRAMADA)
+  motivo            String?
+  canalOrigen       CanalOrigen @map("canal_origen")
+  motivoCancelacion String?     @map("motivo_cancelacion")
+  creadaEn          DateTime    @default(now()) @map("creada_en") @db.Timestamptz(3)
+
+  clinica      Clinica               @relation(fields: [clinicaId], references: [id])
+  paciente     Paciente              @relation(fields: [pacienteId], references: [id])
+  medico       Personal              @relation("CitaMedico", fields: [medicoId], references: [id])
+  consultorio  Consultorio           @relation(fields: [consultorioId], references: [id])
+  historial    CitaHistorialEstado[]
+  signos       SignosVitales?
+  consulta     Consulta?
+  recordatorio Recordatorio?
+
+  @@index([clinicaId, medicoId, inicio])
+  @@index([clinicaId, pacienteId, inicio(sort: Desc)])
+  @@map("cita")
+}
+
+model CitaHistorialEstado {
+  id        String      @id @default(cuid())
+  clinicaId String      @map("clinica_id")
+  citaId    String      @map("cita_id")
+  de        EstadoCita?
+  a         EstadoCita
+  /// null cuando lo ejecuta un proceso del sistema (job de no asistencia, enlace de confirmación)
+  usuarioId String?     @map("usuario_id")
+  fecha     DateTime    @default(now()) @db.Timestamptz(3)
+
+  cita Cita @relation(fields: [citaId], references: [id], onDelete: Cascade)
+
+  @@index([citaId])
+  @@map("cita_historial_estado")
+}
+
+model SignosVitales {
+  id                 String   @id @default(cuid())
+  clinicaId          String   @map("clinica_id")
+  citaId             String   @unique @map("cita_id")
+  enfermeraId        String   @map("enfermera_id")
+  presionSistolica   Int?     @map("presion_sistolica")
+  presionDiastolica  Int?     @map("presion_diastolica")
+  frecuenciaCardiaca Int?     @map("frecuencia_cardiaca")
+  temperatura        Decimal? @db.Decimal(3, 1)
+  spo2               Int?
+  pesoKg             Decimal? @map("peso_kg") @db.Decimal(5, 2)
+  tallaCm            Decimal? @map("talla_cm") @db.Decimal(5, 1)
+  nota               String?
+  alertas            String[]
+  tomadoEn           DateTime @default(now()) @map("tomado_en") @db.Timestamptz(3)
+
+  cita      Cita     @relation(fields: [citaId], references: [id])
+  enfermera Personal @relation(fields: [enfermeraId], references: [id])
+
+  @@map("signos_vitales")
+}
+
+model Consulta {
+  id            String    @id @default(cuid())
+  clinicaId     String    @map("clinica_id")
+  citaId        String    @unique @map("cita_id")
+  medicoId      String    @map("medico_id")
+  motivo        String?
+  examenFisico  String?   @map("examen_fisico")
+  diagnostico   String?
+  cie10         String?
+  tratamiento   String?
+  indicaciones  String?
+  cerradaEn     DateTime? @map("cerrada_en") @db.Timestamptz(3)
+  actualizadaEn DateTime  @updatedAt @map("actualizada_en") @db.Timestamptz(3)
+
+  cita   Cita            @relation(fields: [citaId], references: [id])
+  medico Personal        @relation(fields: [medicoId], references: [id])
+  tareas TareaDelegada[]
+
+  @@map("consulta")
+}
+
+model TareaDelegada {
+  id           String      @id @default(cuid())
+  clinicaId    String      @map("clinica_id")
+  consultaId   String      @map("consulta_id")
+  enfermeraId  String      @map("enfermera_id")
+  tipo         String
+  detalle      String?
+  estado       EstadoTarea @default(PENDIENTE)
+  creadaEn     DateTime    @default(now()) @map("creada_en") @db.Timestamptz(3)
+  completadaEn DateTime?   @map("completada_en") @db.Timestamptz(3)
+
+  consulta  Consulta @relation(fields: [consultaId], references: [id])
+  enfermera Personal @relation(fields: [enfermeraId], references: [id])
+
+  @@index([clinicaId, enfermeraId, estado])
+  @@map("tarea_delegada")
+}
+
+model Recordatorio {
+  id             String             @id @default(cuid())
+  clinicaId      String             @map("clinica_id")
+  citaId         String             @unique @map("cita_id")
+  canal          CanalRecordatorio?
+  programadoPara DateTime           @map("programado_para") @db.Timestamptz(3)
+  enviadoEn      DateTime?          @map("enviado_en") @db.Timestamptz(3)
+  estado         EstadoRecordatorio @default(PROGRAMADO)
+  error          String?
+
+  cita Cita @relation(fields: [citaId], references: [id], onDelete: Cascade)
+
+  @@index([clinicaId, estado])
+  @@map("recordatorio")
+}
+
+/// jti de los enlaces de confirmación ya usados (un solo uso)
+model TokenConfirmacionUsado {
+  jti     String   @id
+  citaId  String   @map("cita_id")
+  usadoEn DateTime @default(now()) @map("usado_en") @db.Timestamptz(3)
+
+  @@map("token_confirmacion_usado")
+}
+
+model DispositivoPush {
+  id            String     @id @default(cuid())
+  usuarioId     String     @map("usuario_id")
+  token         String     @unique
+  plataforma    Plataforma
+  actualizadoEn DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("dispositivo_push")
+}
+
+/// Solo inserciones: un trigger rechaza UPDATE y DELETE (ver migración 0002).
+model Auditoria {
+  id         String   @id @default(cuid())
+  clinicaId  String   @map("clinica_id")
+  usuarioId  String?  @map("usuario_id")
+  accion     String
+  entidad    String
+  entidadId  String?  @map("entidad_id")
+  pacienteId String?  @map("paciente_id")
+  ip         String?
+  fecha      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([clinicaId, pacienteId, fecha(sort: Desc)])
+  @@index([clinicaId, usuarioId, fecha(sort: Desc)])
+  @@map("auditoria")
+}
