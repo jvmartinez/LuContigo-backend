@@ -452,14 +452,29 @@ describe('flujo de atención, enfermería y consulta', () => {
   });
 
   it('RF-20: la auditoría registra los accesos y no admite cambios', async () => {
+    const paciente = await db.paciente.findUniqueOrThrow({
+      where: { id: ids.pac2X },
+      select: { documento: true },
+    });
     const res = await api()
-      .get(`/api/v1/auditoria?pacienteId=${ids.pac2X}`)
+      .get(`/api/v1/auditoria?documento=${encodeURIComponent(paciente.documento)}`)
       .set(como('admin'))
       .expect(200);
     const entidades = res.body.items.map((a: { entidad: string }) => a.entidad);
     expect(entidades).toEqual(
       expect.arrayContaining(['SIGNOS_VITALES', 'CONSULTA', 'HISTORIAL', 'TAREA']),
     );
+
+    const sinCoincidencias = await api()
+      .get('/api/v1/auditoria?documento=documento-inexistente')
+      .set(como('admin'))
+      .expect(200);
+    expect(sinCoincidencias.body).toMatchObject({ items: [], total: 0 });
+
+    await api()
+      .get(`/api/v1/auditoria?pacienteId=${ids.pac2X}`)
+      .set(como('admin'))
+      .expect(400);
 
     await expect(db.$executeRawUnsafe(`UPDATE auditoria SET accion = 'X'`)).rejects.toThrow(
       /solo admite inserciones/,

@@ -40,7 +40,12 @@ export class AuthController {
   @Post('login')
   @Publico()
   @HttpCode(200)
-  @ApiOperation({ summary: 'Email y contraseña → access token + refresh token' })
+  @ApiOperation({
+    summary: 'Inicia sesión con email y contraseña',
+    description:
+      'Devuelve el access token y su vencimiento. En web, el refresh token se guarda en una cookie httpOnly; ' +
+      'con `X-Cliente: mobile`, ambos tokens se devuelven en el cuerpo.',
+  })
   @DocCuerpo(LoginEntrada, { email: 'recepcion@demo.medicita.app', password: 'Demo2026medicita' })
   async login(
     @Cuerpo(LoginEntrada) e: { email: string; password: string },
@@ -53,7 +58,11 @@ export class AuthController {
   @Post('refresh')
   @Publico()
   @HttpCode(200)
-  @ApiOperation({ summary: 'Nuevo access token (rota el refresh token)' })
+  @ApiOperation({
+    summary: 'Renueva los tokens de acceso',
+    description:
+      'Rota el refresh token. La web lo envía mediante cookie; la app móvil debe enviarlo en `refreshToken`.',
+  })
   @DocCuerpo(RefreshEntrada)
   async refresh(
     @Cuerpo(RefreshEntrada) e: { refreshToken?: string },
@@ -67,7 +76,10 @@ export class AuthController {
   @Post('logout')
   @Publico()
   @HttpCode(204)
-  @ApiOperation({ summary: 'Revoca el refresh token' })
+  @ApiOperation({
+    summary: 'Cierra sesión y revoca el refresh token',
+    description: 'La web usa la cookie de refresh; la app móvil envía `refreshToken` en el cuerpo.',
+  })
   @DocCuerpo(RefreshEntrada)
   async logout(
     @Cuerpo(RefreshEntrada) e: { refreshToken?: string },

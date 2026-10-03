@@ -28,7 +28,7 @@ export const IndicadoresConsulta = z
   });
 
 export const AuditoriaConsulta = z.object({
-  pacienteId: Id.optional(),
+  documento: z.string().trim().min(3).max(30).optional(),
   usuarioId: Id.optional(),
   desde: FechaHoraIso.optional(),
 });

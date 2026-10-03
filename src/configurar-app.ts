@@ -25,8 +25,12 @@ export function configurarApp(app: NestExpressApplication): void {
     new DocumentBuilder()
       .setTitle('MediCita API')
       .setDescription(
-        'API REST multi-clínica de MediCita. Errores con formato `{ error: { codigo, mensaje, detalles } }`. ' +
-          'Fechas en ISO 8601 con zona; paginación con `page` y `pageSize` (máx. 100).',
+        'API REST multi-clínica de MediCita. Las rutas protegidas requieren autenticación JWT iniciada ' +
+          'en `/auth/login`. La web recibe el refresh token en una cookie httpOnly; para la app móvil, ' +
+          'envía `X-Cliente: mobile` y los tokens se devuelven en el cuerpo de la respuesta. ' +
+          'Los errores usan `{ error: { codigo, mensaje, detalles } }`. ' +
+          'Las fechas y horas se envían en ISO 8601 con zona horaria; las fechas de calendario usan ' +
+          '`YYYY-MM-DD`. Las listas paginadas usan `page` (desde 1) y `pageSize` (por defecto 20, máximo 100).',
       )
       .setVersion('1.0')
       .addBearerAuth()

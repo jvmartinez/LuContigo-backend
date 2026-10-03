@@ -45,6 +45,7 @@ export class ClinicasController {
 
   @Post('especialidades')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crea una especialidad para la clínica' })
   @DocCuerpo(CrearEspecialidadEntrada, { nombre: 'Cardiología', duracionCitaMin: 40 })
   crearEspecialidad(
     @Cuerpo(CrearEspecialidadEntrada) e: { nombre: string; duracionCitaMin: number },
@@ -54,6 +55,7 @@ export class ClinicasController {
 
   @Patch('especialidades/:id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Actualiza una especialidad' })
   @DocCuerpo(ActualizarEspecialidadEntrada)
   async actualizarEspecialidad(
     @Param('id') id: string,
@@ -68,6 +70,7 @@ export class ClinicasController {
 
   @Get('consultorios')
   @Roles('ADMIN', 'RECEPCION')
+  @ApiOperation({ summary: 'Lista los consultorios y sus especialidades' })
   consultorios() {
     return this.prisma.db.consultorio.findMany({
       orderBy: { nombre: 'asc' },
@@ -77,6 +80,7 @@ export class ClinicasController {
 
   @Post('consultorios')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crea un consultorio' })
   @DocCuerpo(CrearConsultorioEntrada, { nombre: 'Consultorio 4', especialidadId: 'esp_01H…' })
   crearConsultorio(
     @Cuerpo(CrearConsultorioEntrada) e: { nombre: string; especialidadId?: string },
@@ -86,6 +90,7 @@ export class ClinicasController {
 
   @Patch('consultorios/:id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Actualiza un consultorio' })
   @DocCuerpo(ActualizarConsultorioEntrada, { activo: false })
   async actualizarConsultorio(
     @Param('id') id: string,

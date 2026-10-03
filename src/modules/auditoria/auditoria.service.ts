@@ -32,11 +32,19 @@ export class AuditoriaService {
   }
 
   async listar(
-    filtro: { pacienteId?: string; usuarioId?: string; desde?: string },
+    filtro: { documento?: string; usuarioId?: string; desde?: string },
     { page, pageSize }: Paginacion,
   ): Promise<Pagina<unknown>> {
+    const paciente = filtro.documento
+      ? await this.prisma.db.paciente.findFirst({
+          where: { documento: filtro.documento },
+          select: { id: true },
+        })
+      : null;
+    if (filtro.documento && !paciente) return { items: [], page, pageSize, total: 0 };
+
     const where = {
-      pacienteId: filtro.pacienteId,
+      pacienteId: paciente?.id,
       usuarioId: filtro.usuarioId,
       ...(filtro.desde && { fecha: { gte: new Date(filtro.desde) } }),
     };
@@ -49,6 +57,22 @@ export class AuditoriaService {
       }),
       this.prisma.db.auditoria.count({ where }),
     ]);
-    return { items, page, pageSize, total };
+    const pacienteIds = [...new Set(items.flatMap((item) => (item.pacienteId ? [item.pacienteId] : [])))];
+    const pacientes = pacienteIds.length
+      ? await this.prisma.db.paciente.findMany({
+          where: { id: { in: pacienteIds } },
+          select: { id: true, documento: true },
+        })
+      : [];
+    const documentos = new Map(pacientes.map((paciente) => [paciente.id, paciente.documento]));
+    return {
+      items: items.map((item) => ({
+        ...item,
+        documento: item.pacienteId ? (documentos.get(item.pacienteId) ?? null) : null,
+      })),
+      page,
+      pageSize,
+      total,
+    };
   }
 }
