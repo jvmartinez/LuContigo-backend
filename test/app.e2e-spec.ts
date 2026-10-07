@@ -222,6 +222,137 @@ describe('autenticación', () => {
   });
 });
 
+describe('cliente móvil', () => {
+  const MOVIL = { 'X-Cliente': 'mobile' };
+  const loginMovil = (clave: string) =>
+    api()
+      .post('/api/v1/auth/login')
+      .set(MOVIL)
+      .send({ email: `${clave}.x@test.app`, password: PASSWORD })
+      .expect(200);
+  const dispositivos = (usuarioEmail: string) =>
+    db.dispositivoPush.findMany({ where: { usuario: { email: usuarioEmail } } });
+
+  it('recibe y rota el refresh token en el cuerpo; reutilizar uno rotado cierra la sesión', async () => {
+    const login = await loginMovil('medicoB');
+    expect(login.headers['set-cookie']).toBeUndefined();
+    expect(login.body).toEqual({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+      expiraEn: expect.any(Number),
+    });
+
+    const refresh = await api()
+      .post('/api/v1/auth/refresh')
+      .set(MOVIL)
+      .send({ refreshToken: login.body.refreshToken })
+      .expect(200);
+    expect(refresh.headers['set-cookie']).toBeUndefined();
+    expect(refresh.body.refreshToken).toBeDefined();
+    expect(refresh.body.refreshToken).not.toBe(login.body.refreshToken);
+
+    const reuso = await api()
+      .post('/api/v1/auth/refresh')
+      .set(MOVIL)
+      .send({ refreshToken: login.body.refreshToken })
+      .expect(401);
+    expect(reuso.body.error.codigo).toBe('NO_AUTENTICADO');
+    await api()
+      .post('/api/v1/auth/refresh')
+      .set(MOVIL)
+      .send({ refreshToken: refresh.body.refreshToken })
+      .expect(401);
+  });
+
+  it('registra el dispositivo, lo reasigna al cambiar de cuenta y solo el dueño lo borra', async () => {
+    const token = 'fcm-token-e2e-reasignado';
+    await api()
+      .post('/api/v1/dispositivos')
+      .set(como('pac1'))
+      .send({ token, plataforma: 'ANDROID' })
+      .expect(204);
+    await api()
+      .post('/api/v1/dispositivos')
+      .set(como('pac2'))
+      .send({ token, plataforma: 'IOS' })
+      .expect(204);
+    expect(await dispositivos('pac1.x@test.app')).toHaveLength(0);
+    expect(await dispositivos('pac2.x@test.app')).toEqual([
+      expect.objectContaining({ token, plataforma: 'IOS' }),
+    ]);
+
+    await api().delete(`/api/v1/dispositivos/${token}`).set(como('pac1')).expect(204);
+    expect(await dispositivos('pac2.x@test.app')).toHaveLength(1);
+    await api().delete(`/api/v1/dispositivos/${token}`).set(como('pac2')).expect(204);
+    expect(await dispositivos('pac2.x@test.app')).toHaveLength(0);
+  });
+
+  it('logout revoca el refresh token y elimina solo el dispositivo propio indicado', async () => {
+    const login = await loginMovil('pac1');
+    const sesion = { Authorization: `Bearer ${login.body.accessToken}` };
+    const propio = 'fcm-token-e2e-logout-propio';
+    const ajeno = 'fcm-token-e2e-logout-ajeno';
+    await api()
+      .post('/api/v1/dispositivos')
+      .set(sesion)
+      .send({ token: propio, plataforma: 'ANDROID' })
+      .expect(204);
+    await api()
+      .post('/api/v1/dispositivos')
+      .set({ Authorization: `Bearer ${tokens.pac2}` })
+      .send({ token: ajeno, plataforma: 'IOS' })
+      .expect(204);
+
+    await api()
+      .post('/api/v1/auth/logout')
+      .set(MOVIL)
+      .send({ refreshToken: login.body.refreshToken, dispositivoToken: ajeno })
+      .expect(204);
+    expect(await dispositivos('pac2.x@test.app')).toHaveLength(1);
+
+    const segundo = await loginMovil('pac1');
+    await api()
+      .post('/api/v1/auth/logout')
+      .set(MOVIL)
+      .send({ refreshToken: segundo.body.refreshToken, dispositivoToken: propio })
+      .expect(204);
+    expect(await dispositivos('pac1.x@test.app')).toHaveLength(0);
+    await api()
+      .post('/api/v1/auth/refresh')
+      .set(MOVIL)
+      .send({ refreshToken: segundo.body.refreshToken })
+      .expect(401);
+
+    await db.dispositivoPush.deleteMany({ where: { token: ajeno } });
+  });
+
+  it('GET /pacientes/yo devuelve los datos del paciente y rechaza al personal', async () => {
+    const res = await api().get('/api/v1/pacientes/yo').set(como('pac1')).expect(200);
+    expect(res.body).toMatchObject({
+      id: ids.pac1X,
+      email: 'pac1@example.com',
+      tieneAccesoPortal: true,
+    });
+    await api().get('/api/v1/pacientes/yo').set(como('medicoA')).expect(403);
+  });
+
+  it('OpenAPI documenta respuestas, errores y el logout con dispositivo', async () => {
+    const { body } = await api().get('/api/docs/openapi.json').expect(200);
+    const logout = body.paths['/api/v1/auth/logout'].post;
+    expect(logout.security).toBeUndefined();
+    expect(logout.responses['204']).toBeDefined();
+    expect(
+      logout.requestBody.content['application/json'].schema.properties.dispositivoToken,
+    ).toBeDefined();
+    const login = body.paths['/api/v1/auth/login'].post.responses;
+    expect(login['200'].content['application/json'].schema.properties.refreshToken).toBeDefined();
+    expect(login['401'].content['application/json'].schema.properties.error).toBeDefined();
+    const yo = body.paths['/api/v1/pacientes/yo'].get;
+    expect(yo.security).toEqual([{ bearer: [] }]);
+    expect(yo.responses['200'].content['application/json'].schema.properties.email).toBeDefined();
+  });
+});
+
 describe('citas', () => {
   it('RF-05: dos reservas simultáneas del mismo horario, solo una gana', async () => {
     const cuerpo = (pacienteId: string) => ({

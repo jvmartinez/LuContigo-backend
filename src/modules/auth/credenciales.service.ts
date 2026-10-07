@@ -9,6 +9,9 @@ const UNA_HORA = 60 * 60 * 1000;
 
 export const sha256 = (valor: string) => createHash('sha256').update(valor).digest('hex');
 
+const enlaceRestablecimiento = (appWebUrl: string, token: string) =>
+  `${appWebUrl.replace(/\/+$/, '')}/restablecer/${token}`;
+
 /** Contraseñas (Argon2id) y enlaces de un solo uso para crear o restablecer contraseña. */
 @Injectable()
 export class CredencialesService {
@@ -50,7 +53,7 @@ export class CredencialesService {
       asunto: 'Restablece tu contraseña de MediCita',
       texto:
         'Recibimos una solicitud para restablecer tu contraseña. El enlace vence en 1 hora:\n' +
-        `${this.config.get('APP_WEB_URL')}/restablecer-contrasena?token=${token}\n\n` +
+        `${enlaceRestablecimiento(this.config.get('APP_WEB_URL'), token)}\n\n` +
         'Si no fuiste tú, ignora este mensaje.',
     });
   }
@@ -63,7 +66,7 @@ export class CredencialesService {
       asunto: `Tu acceso a MediCita · ${clinica}`,
       texto:
         `${clinica} te dio acceso a MediCita. Crea tu contraseña aquí (el enlace vence en 72 horas):\n` +
-        `${this.config.get('APP_WEB_URL')}/restablecer-contrasena?token=${token}`,
+        enlaceRestablecimiento(this.config.get('APP_WEB_URL'), token),
     });
   }
 }

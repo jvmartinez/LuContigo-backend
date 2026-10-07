@@ -9,7 +9,7 @@ export interface Correo {
 
 /**
  * Envío de email. `resend` usa su API REST; `consola` solo deja constancia en el log
- * (sin destinatario ni contenido) para desarrollo. Amazon SES queda como alternativa.
+ * del asunto, sin destinatario ni contenido sensible. Amazon SES queda como alternativa.
  */
 @Injectable()
 export class EmailProveedor {
@@ -20,7 +20,6 @@ export class EmailProveedor {
   async enviar(correo: Correo): Promise<void> {
     if (this.config.get('EMAIL_PROVIDER') === 'consola') {
       this.logger.log(`[email simulado] asunto="${correo.asunto}"`);
-      if (this.config.get('NODE_ENV') === 'development') this.logger.debug(correo.texto);
       return;
     }
 

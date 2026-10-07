@@ -2,7 +2,14 @@ import { Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auditar, Roles, UsuarioActual } from '../../common/decorators';
 import type { UsuarioSesion } from '../../common/sesion';
-import { Consulta, Cuerpo, DocConsulta, DocCuerpo } from '../../common/zod/zod';
+import {
+  Consulta,
+  Cuerpo,
+  DocConsulta,
+  DocCuerpo,
+  DocErrores,
+  DocRespuesta,
+} from '../../common/zod/zod';
 import { Paginacion } from '../../shared/comun';
 import type { CanalRecordatorio } from '../../shared/enums';
 import {
@@ -10,6 +17,8 @@ import {
   ActualizarPacienteEntrada,
   BuscarPacientesConsulta,
   CrearPacienteEntrada,
+  MisIndicacionesSalida,
+  PacienteSalida,
 } from '../../shared/pacientes';
 import { PacientesService } from './pacientes.service';
 
@@ -49,9 +58,20 @@ export class PacientesController {
   }
 
   // Las rutas /yo van antes que /:id.
+  @Get('yo')
+  @Roles('PACIENTE')
+  @ApiOperation({ summary: 'Mis datos de paciente, contacto y canal preferido' })
+  @DocRespuesta(200, 'Datos del paciente autenticado', PacienteSalida)
+  @DocErrores('NO_AUTENTICADO', 'SIN_PERMISO')
+  miPerfil(@UsuarioActual() u: UsuarioSesion) {
+    return this.pacientes.miPerfil(u);
+  }
+
   @Get('yo/indicaciones')
   @Roles('PACIENTE')
   @ApiOperation({ summary: 'Indicaciones de mis consultas cerradas' })
+  @DocRespuesta(200, 'Indicaciones, de la más reciente a la más antigua', MisIndicacionesSalida)
+  @DocErrores('NO_AUTENTICADO', 'SIN_PERMISO')
   misIndicaciones(@UsuarioActual() u: UsuarioSesion) {
     return this.pacientes.misIndicaciones(u);
   }
@@ -60,6 +80,8 @@ export class PacientesController {
   @Roles('PACIENTE')
   @ApiOperation({ summary: 'Actualiza mi teléfono, email y canal preferido de recordatorio' })
   @DocCuerpo(ActualizarMisDatosEntrada, { telefono: '+573001234567', canalPreferido: 'WHATSAPP' })
+  @DocRespuesta(200, 'Datos actualizados', PacienteSalida)
+  @DocErrores('NO_AUTENTICADO', 'SIN_PERMISO', 'VALIDACION')
   actualizarMisDatos(
     @UsuarioActual() u: UsuarioSesion,
     @Cuerpo(ActualizarMisDatosEntrada)

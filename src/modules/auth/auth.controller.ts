@@ -5,12 +5,15 @@ import type { CookieOptions, Request, Response } from 'express';
 import { Configuracion } from '../../config/config.service';
 import { Publico, UsuarioActual } from '../../common/decorators';
 import type { UsuarioSesion } from '../../common/sesion';
-import { Cuerpo, DocCuerpo } from '../../common/zod/zod';
+import { Cuerpo, DocCuerpo, DocErrores, DocRespuesta } from '../../common/zod/zod';
 import {
   LoginEntrada,
+  LogoutEntrada,
   OlvideContrasenaEntrada,
   RefreshEntrada,
   RestablecerContrasenaEntrada,
+  TokensSalida,
+  UsuarioActualSalida,
 } from '../../shared/auth';
 import { AuthService, Tokens } from './auth.service';
 
@@ -47,6 +50,8 @@ export class AuthController {
       'con `X-Cliente: mobile`, ambos tokens se devuelven en el cuerpo.',
   })
   @DocCuerpo(LoginEntrada, { email: 'recepcion@demo.medicita.app', password: 'Demo2026medicita' })
+  @DocRespuesta(200, 'Sesión iniciada', TokensSalida)
+  @DocErrores('VALIDACION', 'NO_AUTENTICADO', 'LIMITE_EXCEDIDO')
   async login(
     @Cuerpo(LoginEntrada) e: { email: string; password: string },
     @Req() req: Request,
@@ -61,9 +66,13 @@ export class AuthController {
   @ApiOperation({
     summary: 'Renueva los tokens de acceso',
     description:
-      'Rota el refresh token. La web lo envía mediante cookie; la app móvil debe enviarlo en `refreshToken`.',
+      'No requiere access token. Rota el refresh token: el anterior queda revocado y reutilizarlo ' +
+      'cierra todas las sesiones. La web lo envía mediante cookie; la app móvil debe enviarlo en ' +
+      '`refreshToken` y repetir `X-Cliente: mobile` para recibir el nuevo en el cuerpo.',
   })
   @DocCuerpo(RefreshEntrada)
+  @DocRespuesta(200, 'Tokens renovados', TokensSalida)
+  @DocErrores('NO_AUTENTICADO', 'LIMITE_EXCEDIDO')
   async refresh(
     @Cuerpo(RefreshEntrada) e: { refreshToken?: string },
     @Req() req: Request,
@@ -78,15 +87,20 @@ export class AuthController {
   @HttpCode(204)
   @ApiOperation({
     summary: 'Cierra sesión y revoca el refresh token',
-    description: 'La web usa la cookie de refresh; la app móvil envía `refreshToken` en el cuerpo.',
+    description:
+      'No requiere access token. La web usa la cookie de refresh; la app móvil envía `refreshToken` ' +
+      'en el cuerpo y, opcionalmente, `dispositivoToken` para dejar de recibir notificaciones push ' +
+      'en ese dispositivo. Responde 204 aunque el token no exista o ya esté revocado.',
   })
-  @DocCuerpo(RefreshEntrada)
+  @DocCuerpo(LogoutEntrada, { refreshToken: 'eyJhbGciOi…', dispositivoToken: 'fcm-token…' })
+  @DocRespuesta(204, 'Sesión cerrada')
+  @DocErrores('VALIDACION', 'LIMITE_EXCEDIDO')
   async logout(
-    @Cuerpo(RefreshEntrada) e: { refreshToken?: string },
+    @Cuerpo(LogoutEntrada) e: LogoutEntrada,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.auth.logout(e.refreshToken ?? req.cookies?.[COOKIE_REFRESH]);
+    await this.auth.logout(e.refreshToken ?? req.cookies?.[COOKIE_REFRESH], e.dispositivoToken);
     res.clearCookie(COOKIE_REFRESH, this.opcionesCookie());
   }
 
@@ -97,6 +111,8 @@ export class AuthController {
     summary: 'Envía enlace de restablecimiento (responde igual si el email no existe)',
   })
   @DocCuerpo(OlvideContrasenaEntrada)
+  @DocRespuesta(204, 'Solicitud recibida')
+  @DocErrores('VALIDACION', 'LIMITE_EXCEDIDO')
   olvide(@Cuerpo(OlvideContrasenaEntrada) e: { email: string }): Promise<void> {
     return this.auth.olvideContrasena(e.email);
   }
@@ -106,6 +122,8 @@ export class AuthController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Cambia la contraseña con el token del enlace' })
   @DocCuerpo(RestablecerContrasenaEntrada)
+  @DocRespuesta(204, 'Contraseña actualizada; se cierran todas las sesiones')
+  @DocErrores('VALIDACION', 'TOKEN_INVALIDO', 'LIMITE_EXCEDIDO')
   restablecer(
     @Cuerpo(RestablecerContrasenaEntrada) e: { token: string; password: string },
   ): Promise<void> {
@@ -115,6 +133,8 @@ export class AuthController {
   @Get('yo')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Usuario actual, rol y clínica' })
+  @DocRespuesta(200, 'Usuario autenticado', UsuarioActualSalida)
+  @DocErrores('NO_AUTENTICADO')
   yo(@UsuarioActual() u: UsuarioSesion) {
     return this.auth.yo(u);
   }

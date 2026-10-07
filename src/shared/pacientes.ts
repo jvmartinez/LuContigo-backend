@@ -50,3 +50,29 @@ export const RegistrarDispositivoEntrada = z.object({
   token: z.string().min(10).max(4096),
   plataforma: Plataforma,
 });
+
+export const PacienteSalida = z.object({
+  id: z.string(),
+  nombres: z.string(),
+  apellidos: z.string(),
+  documento: z.string(),
+  fechaNacimiento: FechaIso,
+  telefono: z.string().nullable(),
+  email: z.string().nullable(),
+  alergias: z.string().nullable(),
+  antecedentes: z.string().nullable(),
+  seguro: z.string().nullable(),
+  canalPreferido: CanalRecordatorio.nullable(),
+  tieneAccesoPortal: z.boolean(),
+  consentimientoEn: z.string().datetime(),
+});
+
+export const MisIndicacionesSalida = z.array(
+  z.object({
+    citaId: z.string(),
+    fecha: z.string().datetime(),
+    medico: z.string(),
+    especialidad: z.string().nullable(),
+    indicaciones: z.string().nullable(),
+  }),
+);

@@ -3,6 +3,10 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": "\\.e2e-spec\\.ts$",
-  "transform": { "^.+\\.ts$": "ts-jest" },
+  "transform": {
+    "^.+\\.ts$": "ts-jest",
+    "^.+\\.js$": "<rootDir>/jest-esm.js"
+  },
+  "transformIgnorePatterns": ["/node_modules/(?!@nestjs/)"],
   "testTimeout": 180000
 }

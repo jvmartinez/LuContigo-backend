@@ -39,6 +39,9 @@ export function validarEntorno(crudo: Record<string, unknown>): Entorno {
     throw new Error(`Configuración inválida:\n  ${faltantes.join('\n  ')}`);
   }
   const entorno = resultado.data;
+  if (entorno.EMAIL_PROVIDER === 'resend' && !entorno.EMAIL_API_KEY) {
+    throw new Error('EMAIL_API_KEY es obligatorio cuando EMAIL_PROVIDER=resend');
+  }
   if (entorno.NODE_ENV === 'production') {
     for (const clave of [
       'JWT_ACCESS_SECRET',

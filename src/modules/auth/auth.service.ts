@@ -83,12 +83,23 @@ export class AuthService {
     return this.emitirTokens(usuario);
   }
 
-  async logout(refreshToken: string | undefined): Promise<void> {
+  /** Revoca el refresh token y, si se envía, elimina el token push del mismo usuario. */
+  async logout(refreshToken: string | undefined, dispositivoToken?: string): Promise<void> {
     if (!refreshToken) return;
+    const registro = await this.prisma.sinClinica.tokenRefresco.findUnique({
+      where: { hash: sha256(refreshToken) },
+      select: { id: true, usuarioId: true },
+    });
+    if (!registro) return;
     await this.prisma.sinClinica.tokenRefresco.updateMany({
-      where: { hash: sha256(refreshToken), revocadoEn: null },
+      where: { id: registro.id, revocadoEn: null },
       data: { revocadoEn: new Date() },
     });
+    if (dispositivoToken) {
+      await this.prisma.sinClinica.dispositivoPush.deleteMany({
+        where: { token: dispositivoToken, usuarioId: registro.usuarioId },
+      });
+    }
   }
 
   /** Siempre responde igual, exista o no el email. */

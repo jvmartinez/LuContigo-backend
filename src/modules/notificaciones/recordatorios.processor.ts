@@ -79,6 +79,7 @@ export class RecordatoriosProcessor extends WorkerHost {
     }
 
     const datos = {
+      citaId,
       nombre: paciente.nombres.split(' ')[0],
       medico: cita.medico.nombre,
       especialidad: cita.medico.especialidad?.nombre ?? 'Consulta',
@@ -105,7 +106,7 @@ export class RecordatoriosProcessor extends WorkerHost {
 
   private async enviarPor(
     canal: CanalRecordatorio,
-    datos: Parameters<typeof textoRecordatorio>[0],
+    datos: Parameters<typeof textoRecordatorio>[0] & { citaId: string },
     paciente: { telefono: string | null; email: string | null; usuarioId: string | null },
   ): Promise<void> {
     const texto = textoRecordatorio(datos);
@@ -114,7 +115,7 @@ export class RecordatoriosProcessor extends WorkerHost {
         const entregados = await this.push.enviarAUsuario(paciente.usuarioId as string, {
           titulo: 'Recordatorio de cita',
           cuerpo: texto.split('\n')[0],
-          datos: { tipo: 'RECORDATORIO_CITA', enlace: datos.enlace },
+          datos: { tipo: 'RECORDATORIO_CITA', citaId: datos.citaId, enlace: datos.enlace },
         });
         if (!entregados) throw new Error('ningún dispositivo lo recibió');
         return;

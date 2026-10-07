@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /** Códigos de error de la API (BACKEND.md §8.7) y su estado HTTP. */
 export const CODIGOS_ERROR = {
   NO_AUTENTICADO: 401,
@@ -17,6 +19,14 @@ export const CODIGOS_ERROR = {
 } as const;
 
 export type CodigoError = keyof typeof CODIGOS_ERROR;
+
+export const ErrorSalida = z.object({
+  error: z.object({
+    codigo: z.enum(Object.keys(CODIGOS_ERROR) as [CodigoError, ...CodigoError[]]),
+    mensaje: z.string(),
+    detalles: z.record(z.unknown()).optional(),
+  }),
+});
 
 export interface RespuestaError {
   error: {

@@ -1,6 +1,6 @@
 # MediCita · API
 
-API REST multi-clínica de MediCita (NestJS 10 · Prisma 5 · PostgreSQL 16 · BullMQ/Redis 7).
+API REST multi-clínica de MediCita (NestJS 12 · Prisma 5 · PostgreSQL 16 · BullMQ/Redis 7).
 Implementa el documento `BACKEND.md` (RF-01 a RF-20). La web y la app móvil consumen solo esta API.
 
 ## Puesta en marcha
@@ -33,6 +33,9 @@ restablecer contraseña) se escriben en el log en lugar de enviarse; solo en `NO
 | `npm test` · `npm run test:cov` | Pruebas unitarias (máquina de estados, agenda, signos, canales, errores) |
 | `npm run test:e2e` | Integración con Postgres y Redis reales vía Testcontainers (requiere Docker) |
 
+NestJS 12 se publica solo como ESM; Jest transpila `@nestjs/*` a CommonJS con
+[`test/jest-esm.js`](test/jest-esm.js), usado por ambas configuraciones de Jest.
+
 ## Estructura
 
 ```
@@ -53,6 +56,45 @@ src/
     consultas/ notificaciones/ indicadores/ auditoria/
 test/app.e2e-spec.ts
 ```
+
+## Agentes y skills de Copilot
+
+Las reglas del proyecto y el flujo de trabajo están en [AGENTS.md](AGENTS.md).
+Copilot también las referencia desde
+[copilot-instructions.md](.github/copilot-instructions.md).
+
+| Agente | Responsabilidad |
+| --- | --- |
+| [Equipo](.github/agents/equipo.agent.md) | Coordinar la petición y usar solo los especialistas necesarios |
+| [Prompt Senior](.github/agents/prompt-senior.agent.md) | Preparar primero un prompt operativo con alcance y criterios verificables |
+| [Arquitecto Senior](.github/agents/arquitecto-senior.agent.md) | Revisar diseño, módulos, contratos, escalabilidad y decisiones técnicas |
+| [Seguridad Senior](.github/agents/seguridad-senior.agent.md) | Revisar autenticación, autorización, privacidad clínica y vulnerabilidades |
+| [Backend Senior](.github/agents/backend-senior.agent.md) | API NestJS, reglas clínicas, Zod, Swagger y notificaciones |
+| [Datos Senior](.github/agents/datos-senior.agent.md) | Prisma, PostgreSQL, migraciones y concurrencia |
+| [QA Senior](.github/agents/qa-senior.agent.md) | Pruebas unitarias y de integración |
+
+Las [skills](.github/skills) cubren preparación de prompts, backend, Prisma,
+OpenAPI, pruebas y notificaciones. Se cargan según la tarea, no todas a la vez.
+Los agentes usan el modelo seleccionado por el usuario, sin fijar otro modelo.
+
+Para activar el flujo en un cliente que cargue las instrucciones del repositorio:
+
+```text
+equipo actualiza Swagger de auditoría sin cambiar los permisos
+equipo corrige la doble reserva y agrega pruebas de concurrencia
+equipo analiza el flujo de recordatorios, sin modificar código
+```
+
+La primera delegación será a **Prompt Senior**; después, el coordinador ejecutará
+la tarea o pedirá una aclaración si falta una decisión esencial. Escribir únicamente
+`equipo` hará que solicite la tarea. También puedes seleccionar **Equipo** en el
+selector de agentes de Copilot para usar siempre ese flujo.
+
+La palabra no es un comando del backend ni un disparador de teclado: el enrutamiento
+depende del soporte de instrucciones y subagentes del cliente. Si no puede invocar
+el agente, debe indicarlo y aplicar su definición directamente, sin simular la
+delegación. Si no aparecen las personalizaciones nuevas, abre una conversación
+nueva o recarga VS Code y verifica que las personalizaciones del repositorio estén habilitadas.
 
 ## Cómo se cumplen las reglas clave
 
@@ -87,6 +129,11 @@ test/app.e2e-spec.ts
 - **Endpoints añadidos** que el documento no lista pero la web/app necesitan: `GET /medicos` (para elegir
   médico al agendar), `GET /clinica`, `GET /citas/:id/consulta` y
   `DELETE /personal/:id/ausencias/:ausenciaId`.
+- **App móvil.** `GET /pacientes/yo` devuelve los datos propios del paciente (contacto y canal
+  preferido). `POST /auth/logout` acepta `dispositivoToken` opcional para borrar el token push del
+  mismo usuario al cerrar sesión. La push de recordatorio lleva en `data`
+  `{ tipo: 'RECORDATORIO_CITA', citaId, enlace }` para abrir la cita en la app; los enlaces de
+  email (invitación, restablecer contraseña, confirmación) siguen apuntando a `APP_WEB_URL`.
 - **Códigos de error añadidos** a los base: `FUERA_DE_HORARIO`, `SIN_ENFERMERA_ASIGNADA`,
   `CONSULTA_CERRADA`, `DUPLICADO` (409) y `TOKEN_INVALIDO` (410). La cuenta bloqueada responde
   `LIMITE_EXCEDIDO` (429).

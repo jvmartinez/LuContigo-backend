@@ -1,7 +1,8 @@
 import { applyDecorators, Body, PipeTransform, Query } from '@nestjs/common';
-import { ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiBody, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ZodError, ZodTypeAny } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { CODIGOS_ERROR, CodigoError, ErrorSalida } from '../../shared/errores';
 import { ErrorDominio } from '../errores/error-dominio';
 
 export class ZodPipe implements PipeTransform<unknown, unknown> {
@@ -37,6 +38,37 @@ export function aJsonSchema(esquema: ZodTypeAny): Record<string, any> {
 /** Documenta el cuerpo en OpenAPI a partir del esquema Zod, con un ejemplo opcional. */
 export function DocCuerpo(esquema: ZodTypeAny, ejemplo?: unknown) {
   return ApiBody({ schema: { ...aJsonSchema(esquema), ...(ejemplo ? { example: ejemplo } : {}) } });
+}
+
+/** Documenta una respuesta exitosa en OpenAPI; sin esquema, la respuesta no tiene cuerpo. */
+export function DocRespuesta(
+  status: number,
+  descripcion: string,
+  esquema?: ZodTypeAny,
+  ejemplo?: unknown,
+) {
+  return ApiResponse({
+    status,
+    description: descripcion,
+    ...(esquema && {
+      schema: { ...aJsonSchema(esquema), ...(ejemplo ? { example: ejemplo } : {}) },
+    }),
+  });
+}
+
+/** Documenta los errores posibles con el formato `{ error: { codigo, mensaje, detalles } }`. */
+export function DocErrores(...codigos: CodigoError[]) {
+  const porStatus = new Map<number, CodigoError[]>();
+  for (const codigo of codigos) {
+    const status = CODIGOS_ERROR[codigo];
+    porStatus.set(status, [...(porStatus.get(status) ?? []), codigo]);
+  }
+  const schema = aJsonSchema(ErrorSalida);
+  return applyDecorators(
+    ...[...porStatus].map(([status, lista]) =>
+      ApiResponse({ status, description: `Error: ${lista.join(', ')}`, schema }),
+    ),
+  );
 }
 
 /** Documenta cada parámetro de la query en OpenAPI. */

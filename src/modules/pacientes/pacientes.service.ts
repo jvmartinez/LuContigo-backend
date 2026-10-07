@@ -213,6 +213,13 @@ export class PacientesService {
   }
 
   /** Indicaciones de las consultas cerradas del propio paciente. */
+  async miPerfil(sesion: UsuarioSesion) {
+    if (!sesion.pacienteId) throw sinPermiso();
+    const paciente = await this.prisma.db.paciente.findUnique({ where: { id: sesion.pacienteId } });
+    if (!paciente) throw noEncontrado('El paciente');
+    return serializarPaciente(paciente);
+  }
+
   async misIndicaciones(sesion: UsuarioSesion) {
     if (!sesion.pacienteId) throw sinPermiso();
     const consultas = await this.prisma.db.consulta.findMany({
